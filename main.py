@@ -3,18 +3,19 @@ import time
 import json
 import threading
 import pandas as pd
-import pandas_ta as ta
+from ta.momentum import RSIIndicator
+from ta.trend import EMAIndicator
 import websocket
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 from supabase import create_client, Client
 
-# Dummy HTTP Server (Render Port Binding Bypass)
+# Dummy HTTP Server (Render Port Scan Bypass)
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Live Market Analysis Engine Running")
+        self.wfile.write(b"Live Market Strategy Engine Running")
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
@@ -23,7 +24,7 @@ def run_dummy_server():
 
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# Supabase Client
+# Supabase Setup
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -33,28 +34,29 @@ candle_data = []
 def analyze_and_generate():
     global candle_data
     if len(candle_data) < 15:
-        return  # Live candles accumulate hone ka wait karega
+        return
 
     df = pd.DataFrame(candle_data)
     
-    # Technical Indicators Calculation
-    df['rsi'] = ta.rsi(df['close'], length=14)
-    df['ema_fast'] = ta.ema(df['close'], length=5)
-    df['ema_slow'] = ta.ema(df['close'], length=13)
+    # Clean Light Technical Indicators Calculation
+    rsi_series = RSIIndicator(close=df['close'], window=14).rsi()
+    ema_fast_series = EMAIndicator(close=df['close'], window=5).ema_indicator()
+    ema_slow_series = EMAIndicator(close=df['close'], window=13).ema_indicator()
     
-    latest = df.iloc[-1]
-    rsi_val = round(latest['rsi'], 1)
-    close_price = round(latest['close'], 5)
+    rsi_val = round(rsi_series.iloc[-1], 1)
+    close_price = round(df['close'].iloc[-1], 5)
+    ema_fast = ema_fast_series.iloc[-1]
+    ema_slow = ema_slow_series.iloc[-1]
     
     direction = None
     confidence = 0
     
-    if rsi_val < 35 and latest['ema_fast'] > latest['ema_slow']:
+    if rsi_val < 35 and ema_fast > ema_slow:
         direction = "CALL"
         confidence = min(98, int(80 + (35 - rsi_val) * 1.2))
         ema_cross = "BULLISH"
         bb_state = "OVERSOLD"
-    elif rsi_val > 65 and latest['ema_fast'] < latest['ema_slow']:
+    elif rsi_val > 65 and ema_fast < ema_slow:
         direction = "PUT"
         confidence = min(98, int(80 + (rsi_val - 65) * 1.2))
         ema_cross = "BEARISH"
@@ -82,7 +84,7 @@ def analyze_and_generate():
         
         try:
             supabase.table("live_signals").insert(payload).execute()
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] LIVE ANALYSIS SIGNAL: {direction} | RSI: {rsi_val} | Price: {close_price}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] LIVE SIGNAL: {direction} | RSI: {rsi_val} | Price: {close_price}")
         except Exception as e:
             print(f"Database Error: {e}")
 
@@ -105,8 +107,8 @@ def start_market_stream():
 threading.Thread(target=start_market_stream, daemon=True).start()
 
 if __name__ == "__main__":
-    print("Real-Time Engine Started...")
+    print("Real-Time OTC Market Engine Started...")
     while True:
         analyze_and_generate()
         time.sleep(60)
-               
+        
