@@ -1,4 +1,4 @@
 supabase
-requests
 pandas
-ta
+pandas_ta
+websocket-client
