@@ -1,10 +1,27 @@
 import os
 import time
 import random
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 from supabase import create_client, Client
 
-# Supabase Credentials (Render Environment Variables se aayenge)
+# Dummy HTTP Server Render ke Port Scan Issue ko bypass karne ke liye
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot Engine is Active")
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+    server.serve_forever()
+
+# Dummy Server ko Background Thread mein start karein
+threading.Thread(target=run_dummy_server, daemon=True).start()
+
+# Supabase Credentials
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
@@ -62,6 +79,5 @@ if __name__ == "__main__":
     print("Starting Binary Options Strategy Bot Engine...")
     while True:
         generate_and_push_signal()
-        # Har 1 minute (60 seconds) mein naya signal push hoga
         time.sleep(60)
-      
+        
