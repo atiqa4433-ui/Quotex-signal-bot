@@ -1,83 +1,112 @@
 import os
 import time
-import random
+import json
 import threading
+import pandas as pd
+import pandas_ta as ta
+import websocket
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 from supabase import create_client, Client
 
-# Dummy HTTP Server Render ke Port Scan Issue ko bypass karne ke liye
+# Dummy HTTP Server (Render Port Binding Bypass)
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot Engine is Active")
+        self.wfile.write(b"Live Market Analysis Engine Running")
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
     server.serve_forever()
 
-# Dummy Server ko Background Thread mein start karein
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# Supabase Credentials
+# Supabase Client
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("Error: Supabase credentials missing in Environment Variables!")
-    exit(1)
-
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-ASSETS = ['EUR/USD (OTC)', 'GBP/USD (OTC)', 'USD/JPY (OTC)', 'AUD/USD (OTC)']
+candle_data = []
 
-def generate_and_push_signal():
-    asset = random.choice(ASSETS)
-    direction = random.choice(['CALL', 'PUT'])
-    confidence = random.randint(85, 98)
-    entry_price = round(random.uniform(1.05000, 1.10000), 5)
+def analyze_and_generate():
+    global candle_data
+    if len(candle_data) < 15:
+        return  # Live candles accumulate hone ka wait karega
+
+    df = pd.DataFrame(candle_data)
     
-    if direction == 'CALL':
-        rsi = round(random.uniform(20.0, 32.0), 1)
-        ema_cross = 'BULLISH'
-        bb_state = 'OVERSOLD'
-        pattern = 'Bullish Reversal'
-    else:
-        rsi = round(random.uniform(68.0, 80.0), 1)
-        ema_cross = 'BEARISH'
-        bb_state = 'OVERBOUGHT'
-        pattern = 'Bearish Reversal'
+    # Technical Indicators Calculation
+    df['rsi'] = ta.rsi(df['close'], length=14)
+    df['ema_fast'] = ta.ema(df['close'], length=5)
+    df['ema_slow'] = ta.ema(df['close'], length=13)
+    
+    latest = df.iloc[-1]
+    rsi_val = round(latest['rsi'], 1)
+    close_price = round(latest['close'], 5)
+    
+    direction = None
+    confidence = 0
+    
+    if rsi_val < 35 and latest['ema_fast'] > latest['ema_slow']:
+        direction = "CALL"
+        confidence = min(98, int(80 + (35 - rsi_val) * 1.2))
+        ema_cross = "BULLISH"
+        bb_state = "OVERSOLD"
+    elif rsi_val > 65 and latest['ema_fast'] < latest['ema_slow']:
+        direction = "PUT"
+        confidence = min(98, int(80 + (rsi_val - 65) * 1.2))
+        ema_cross = "BEARISH"
+        bb_state = "OVERBOUGHT"
 
-    now = datetime.utcnow()
-    expiry = now + timedelta(minutes=1)
+    if direction:
+        now = datetime.utcnow()
+        expiry = now + timedelta(minutes=1)
+        
+        payload = {
+            "asset": "EUR/USD (OTC)",
+            "direction": direction,
+            "timeframe": "1 MIN",
+            "confidence": confidence,
+            "entry_price": close_price,
+            "status": "PENDING",
+            "rsi": rsi_val,
+            "ema_cross": ema_cross,
+            "bb_state": bb_state,
+            "pattern": "Live Technical Reversal",
+            "created_at": now.isoformat(),
+            "entry_time": now.isoformat(),
+            "expiry_time": expiry.isoformat()
+        }
+        
+        try:
+            supabase.table("live_signals").insert(payload).execute()
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] LIVE ANALYSIS SIGNAL: {direction} | RSI: {rsi_val} | Price: {close_price}")
+        except Exception as e:
+            print(f"Database Error: {e}")
 
-    signal_payload = {
-        "asset": asset,
-        "direction": direction,
-        "timeframe": "1 MIN",
-        "confidence": confidence,
-        "entry_price": entry_price,
-        "status": "PENDING",
-        "rsi": rsi,
-        "ema_cross": ema_cross,
-        "bb_state": bb_state,
-        "pattern": pattern,
-        "created_at": now.isoformat(),
-        "entry_time": now.isoformat(),
-        "expiry_time": expiry.isoformat()
-    }
-
+def on_message(ws, message):
+    global candle_data
     try:
-        data, count = supabase.table("live_signals").insert(signal_payload).execute()
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Signal Pushed: {asset} - {direction} ({confidence}%)")
-    except Exception as e:
-        print(f"Error pushing signal: {e}")
+        data = json.loads(message)
+        if 'price' in data:
+            candle_data.append({'close': float(data['price']), 'time': time.time()})
+            if len(candle_data) > 100:
+                candle_data.pop(0)
+    except Exception:
+        pass
+
+def start_market_stream():
+    ws_url = "wss://stream.binaryoptionsapi.com/quotes"
+    ws = websocket.WebSocketApp(ws_url, on_message=on_message)
+    ws.run_forever()
+
+threading.Thread(target=start_market_stream, daemon=True).start()
 
 if __name__ == "__main__":
-    print("Starting Binary Options Strategy Bot Engine...")
+    print("Real-Time Engine Started...")
     while True:
-        generate_and_push_signal()
+        analyze_and_generate()
         time.sleep(60)
-        
+               
