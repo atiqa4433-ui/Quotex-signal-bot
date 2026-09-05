@@ -1,5 +1,2 @@
 supabase
-pandas
-ta
-websocket-client
 requests
