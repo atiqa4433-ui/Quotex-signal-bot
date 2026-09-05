@@ -86,4 +86,27 @@ def run_engine():
 
 if __name__ == "__main__":
     run_engine()
+    import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+
+# Web server request handler for Render port check
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Signal Engine Active")
+
+def start_health_check_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+    print(f"Health check server listening on port {port}")
+    server.serve_forever()
+
+if __name__ == "__main__":
+    # Start health server in background thread so Render marks deploy as Live
+    threading.Thread(target=start_health_check_server, daemon=True).start()
+    
+    # Start main signal engine
+    run_engine()
     
