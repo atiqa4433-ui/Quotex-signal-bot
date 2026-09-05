@@ -8,7 +8,7 @@ import requests
 
 # Supabase Credentials
 SUPABASE_URL = "https://qvgwwfxrlnnouyunumko.supabase.co"
-SUPABASE_KEY = "sb_publishable_EDurWJ8FIw5C-NDjH32TRQ_9tBYOn3i"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2Z3d3ZnhybG5ub3V5dW51bWtvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODQ0MTcxOSwiZXhwIjoyMTA0MDE3NzE5fQ.Doi9UQpMP0vty3KraW6b8Y3M0kIPL6A5USMKM116nsA
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
