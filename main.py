@@ -1,17 +1,33 @@
+import os
 import time
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 import requests
 
-# Apna exact Supabase URL aur Service Key/Anon Key yahan dalein
+# Supabase Credentials
 SUPABASE_URL = "https://qvgwwfxrlnnouyunumko.supabase.co"
-SUPABASE_KEY = "sb_publishable_EDurMJ8FIw5C-NDjH32TRQ_9tBYOn3i"
+SUPABASE_KEY = "sb_publishable_EDurWJ8FIw5C-NDjH32TRQ_9tBYOn3i"
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     print("Supabase connected successfully!")
 except Exception as e:
     print(f"Supabase Connection Error: {e}")
+
+# Render Port Binding Web Server
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Signal Engine Active")
+
+def start_health_check_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+    print(f"Health check server listening on port {port}")
+    server.serve_forever()
 
 def get_market_price():
     try:
@@ -50,18 +66,17 @@ def auto_resolve_pending_signals():
 def run_engine():
     print("Guaranteed Signal Engine Started...")
     last_signal_time = 0
-    COOLDOWN_SECONDS = 180  # 3 minute gap between signals for analysis
+    COOLDOWN_SECONDS = 180  # 3 minute gap between signals
 
     while True:
-        # 1. Past expired signals update karein
+        # 1. Past expired signals outcome resolution
         auto_resolve_pending_signals()
 
-        # 2. 3 minute cooldown complete hone par naya signal generate karein
+        # 2. Check 3-minute cooldown before new signal
         current_time = time.time()
         if current_time - last_signal_time >= COOLDOWN_SECONDS:
             price = get_market_price()
             
-            # Simple alternating/analysis strategy logic
             direction = "CALL" if (int(current_time) % 2 == 0) else "PUT"
             now = datetime.now(timezone.utc)
             expiry = now + timedelta(seconds=60)
@@ -85,28 +100,9 @@ def run_engine():
         time.sleep(5)
 
 if __name__ == "__main__":
-    run_engine()
-    import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-
-# Web server request handler for Render port check
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Signal Engine Active")
-
-def start_health_check_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
-    print(f"Health check server listening on port {port}")
-    server.serve_forever()
-
-if __name__ == "__main__":
-    # Start health server in background thread so Render marks deploy as Live
+    # Start Port Listener in Background Thread for Render
     threading.Thread(target=start_health_check_server, daemon=True).start()
     
-    # Start main signal engine
+    # Run Signal Engine Loop
     run_engine()
     
