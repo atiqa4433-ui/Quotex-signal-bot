@@ -106,3 +106,14 @@ if __name__ == "__main__":
     # Run Signal Engine Loop
     run_engine()
     
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Signal Engine Active")
+
+    # HEAD requests handling to fix 501 errors in Render logs
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+        
